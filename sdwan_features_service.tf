@@ -2222,3 +2222,73 @@ resource "sdwan_service_ipv6_acl_feature" "service_ipv6_acl_feature" {
     }
   ]
 }
+resource "sdwan_service_appqoe_feature" "service_appqoe_feature" {
+  for_each = {
+    for appqoe_item in flatten([
+      for profile in try(local.feature_profiles.service_profiles, []) : [
+        for appqoe in try(profile.appqoe_features, []) : {
+          profile = profile
+          appqoe  = appqoe
+        }
+      ]
+    ])
+    : "${appqoe_item.profile.name}-${appqoe_item.appqoe.name}" => appqoe_item
+  }
+  name               = each.value.appqoe.name
+  description        = try(each.value.appqoe.description, null)
+  feature_profile_id = sdwan_service_feature_profile.service_feature_profile[each.value.profile.name].id
+  appqoe_device_role = each.value.appqoe.appqoe_device_role
+
+  forwarder_controller_groups = try(length(each.value.appqoe.forwarder_controller_groups) == 0, true) ? null : [for group in each.value.appqoe.forwarder_controller_groups : {
+    appnav_controllers = try(length(group.appnav_controllers) == 0, true) ? null : [for controller in group.appnav_controllers : {
+      address          = try(controller.address, null)
+      address_variable = try("{{${controller.address_variable}}}", null)
+      vpn              = try(controller.vpn, null)
+    }]
+  }]
+
+  forwarder_service_node_groups = try(length(each.value.appqoe.forwarder_service_node_groups) == 0, true) ? null : [for group in each.value.appqoe.forwarder_service_node_groups : {
+    name = try(group.name, null)
+    service_nodes = try(length(group.service_nodes) == 0, true) ? null : [for node in group.service_nodes : {
+      address = try(node.address, null)
+    }]
+  }]
+
+  forwarder_service_contexts = try(length(each.value.appqoe.forwarder_service_contexts) == 0, true) ? null : [for context in each.value.appqoe.forwarder_service_contexts : {
+    appnav_controller_group = try(context.appnav_controller_group, null)
+    service_node_group      = try(context.service_node_group, null)
+    enable                  = try(context.enable, null)
+    vpn                     = try(context.vpn, null)
+    vpn_variable            = try("{{${context.vpn_variable}}}", null)
+  }]
+
+  # Manager fixes these values for an integrated service node. Sending the constants rather
+  # than null keeps config and state aligned, since the provider reads `default` values back.
+  combined_controller_groups = strcontains(each.value.appqoe.appqoe_device_role, "forwarderAndServiceNode") ? [{
+    group_name         = "ACG-APPQOE"
+    appnav_controllers = [{ address = "192.168.2.1" }]
+  }] : null
+
+  combined_service_node_groups = strcontains(each.value.appqoe.appqoe_device_role, "forwarderAndServiceNode") ? [{
+    name          = "SNG-APPQOE"
+    service_nodes = [{ address = "192.168.2.2" }]
+  }] : null
+
+  combined_service_contexts = try(length(each.value.appqoe.combined_service_contexts) == 0, true) ? null : [for context in each.value.appqoe.combined_service_contexts : {
+    appnav_controller_group = try(context.appnav_controller_group, null)
+    service_node_group      = try(context.service_node_group, null)
+    enable                  = try(context.enable, null)
+    vpn                     = try(context.vpn, null)
+    vpn_variable            = try("{{${context.vpn_variable}}}", null)
+  }]
+
+  service_node_service_node_groups = strcontains(each.value.appqoe.appqoe_device_role, "serviceNode") ? [{
+    name          = "SNG-APPQOE"
+    service_nodes = [{ address = "192.168.2.2", vpg_ip = "192.168.2.1/24" }]
+  }] : null
+
+  virtual_applications = try(length(each.value.appqoe.virtual_applications) == 0, true) ? null : [for application in each.value.appqoe.virtual_applications : {
+    resource_profile          = try(application.resource_profile, null)
+    resource_profile_variable = try("{{${application.resource_profile_variable}}}", null)
+  }]
+}
