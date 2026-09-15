@@ -2240,7 +2240,7 @@ locals {
     service_node_address   = "192.168.2.2"
     vpg_ip                 = "192.168.2.1/24"
     service_context_enable = true
-    service_context_vpn = 0
+    service_context_vpn    = 0
   }
 }
 
