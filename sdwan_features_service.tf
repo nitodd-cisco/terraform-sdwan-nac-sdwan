@@ -2222,13 +2222,36 @@ resource "sdwan_service_ipv6_acl_feature" "service_ipv6_acl_feature" {
     }
   ]
 }
+
+locals {
+  appqoe_device_roles = {
+    "forwarder"                           = "forwarder"
+    "forwarder_and_service_node"          = "forwarderAndServiceNode"
+    "forwarder_and_service_node_with_dre" = "forwarderAndServiceNodeWithDre"
+    "service_node"                        = "serviceNode"
+    "service_node_with_dre"               = "serviceNodeWithDre"
+  }
+  appqoe_combined_roles     = ["forwarder_and_service_node", "forwarder_and_service_node_with_dre"]
+  appqoe_service_node_roles = ["service_node", "service_node_with_dre"]
+  appqoe_defaults = {
+    controller_group_name  = "ACG-APPQOE"
+    controller_address     = "192.168.2.1"
+    service_node_group     = "SNG-APPQOE"
+    service_node_address   = "192.168.2.2"
+    vpg_ip                 = "192.168.2.1/24"
+    service_context_enable = true
+    service_context_vpn = 0
+  }
+}
+
 resource "sdwan_service_appqoe_feature" "service_appqoe_feature" {
   for_each = {
     for appqoe_item in flatten([
       for profile in try(local.feature_profiles.service_profiles, []) : [
         for appqoe in try(profile.appqoe_features, []) : {
-          profile = profile
-          appqoe  = appqoe
+          profile     = profile
+          appqoe      = appqoe
+          device_role = lookup(local.appqoe_device_roles, appqoe.appqoe_device_role, appqoe.appqoe_device_role)
         }
       ]
     ])
@@ -2237,13 +2260,13 @@ resource "sdwan_service_appqoe_feature" "service_appqoe_feature" {
   name               = each.value.appqoe.name
   description        = try(each.value.appqoe.description, null)
   feature_profile_id = sdwan_service_feature_profile.service_feature_profile[each.value.profile.name].id
-  appqoe_device_role = each.value.appqoe.appqoe_device_role
+  appqoe_device_role = each.value.device_role
 
   forwarder_controller_groups = try(length(each.value.appqoe.forwarder_controller_groups) == 0, true) ? null : [for group in each.value.appqoe.forwarder_controller_groups : {
     appnav_controllers = try(length(group.appnav_controllers) == 0, true) ? null : [for controller in group.appnav_controllers : {
       address          = try(controller.address, null)
       address_variable = try("{{${controller.address_variable}}}", null)
-      vpn              = try(controller.vpn, null)
+      vpn              = try(controller.vpn_id, null)
     }]
   }]
 
@@ -2254,41 +2277,55 @@ resource "sdwan_service_appqoe_feature" "service_appqoe_feature" {
     }]
   }]
 
-  forwarder_service_contexts = try(length(each.value.appqoe.forwarder_service_contexts) == 0, true) ? null : [for context in each.value.appqoe.forwarder_service_contexts : {
-    appnav_controller_group = try(context.appnav_controller_group, null)
-    service_node_group      = try(context.service_node_group, null)
-    enable                  = try(context.enable, null)
-    vpn                     = try(context.vpn, null)
-    vpn_variable            = try("{{${context.vpn_variable}}}", null)
+  forwarder_service_contexts = each.value.appqoe.appqoe_device_role != "forwarder" ? null : (
+    try(length(each.value.appqoe.forwarder_service_contexts) == 0, true) ? [{
+      appnav_controller_group = local.appqoe_defaults.controller_group_name
+      service_node_group      = try(each.value.appqoe.forwarder_service_node_groups[0].name, local.appqoe_defaults.service_node_group)
+      enable                  = local.appqoe_defaults.service_context_enable
+      vpn                     = local.appqoe_defaults.service_context_vpn
+      vpn_variable            = null
+      }] : [for context in each.value.appqoe.forwarder_service_contexts : {
+      appnav_controller_group = try(context.appnav_controller_group, local.appqoe_defaults.controller_group_name)
+      service_node_group      = try(context.service_node_group, try(each.value.appqoe.forwarder_service_node_groups[0].name, local.appqoe_defaults.service_node_group))
+      enable                  = try(context.enable, local.appqoe_defaults.service_context_enable)
+      vpn                     = try(context.vpn_variable, null) != null ? null : try(context.vpn, local.appqoe_defaults.service_context_vpn)
+      vpn_variable            = try("{{${context.vpn_variable}}}", null)
+    }]
+  )
+
+  combined_controller_groups = !contains(local.appqoe_combined_roles, each.value.appqoe.appqoe_device_role) ? null : [{
+    group_name         = local.appqoe_defaults.controller_group_name
+    appnav_controllers = [{ address = local.appqoe_defaults.controller_address }]
   }]
 
-  # Manager fixes these values for an integrated service node. Sending the constants rather
-  # than null keeps config and state aligned, since the provider reads `default` values back.
-  combined_controller_groups = strcontains(each.value.appqoe.appqoe_device_role, "forwarderAndServiceNode") ? [{
-    group_name         = "ACG-APPQOE"
-    appnav_controllers = [{ address = "192.168.2.1" }]
-  }] : null
-
-  combined_service_node_groups = strcontains(each.value.appqoe.appqoe_device_role, "forwarderAndServiceNode") ? [{
-    name          = "SNG-APPQOE"
-    service_nodes = [{ address = "192.168.2.2" }]
-  }] : null
-
-  combined_service_contexts = try(length(each.value.appqoe.combined_service_contexts) == 0, true) ? null : [for context in each.value.appqoe.combined_service_contexts : {
-    appnav_controller_group = try(context.appnav_controller_group, null)
-    service_node_group      = try(context.service_node_group, null)
-    enable                  = try(context.enable, null)
-    vpn                     = try(context.vpn, null)
-    vpn_variable            = try("{{${context.vpn_variable}}}", null)
+  combined_service_node_groups = !contains(local.appqoe_combined_roles, each.value.appqoe.appqoe_device_role) ? null : [{
+    name          = local.appqoe_defaults.service_node_group
+    service_nodes = [{ address = local.appqoe_defaults.service_node_address }]
   }]
 
-  service_node_service_node_groups = strcontains(each.value.appqoe.appqoe_device_role, "serviceNode") ? [{
-    name          = "SNG-APPQOE"
-    service_nodes = [{ address = "192.168.2.2", vpg_ip = "192.168.2.1/24" }]
-  }] : null
+  combined_service_contexts = !contains(local.appqoe_combined_roles, each.value.appqoe.appqoe_device_role) ? null : (
+    try(length(each.value.appqoe.combined_service_contexts) == 0, true) ? [{
+      appnav_controller_group = local.appqoe_defaults.controller_group_name
+      service_node_group      = local.appqoe_defaults.service_node_group
+      enable                  = local.appqoe_defaults.service_context_enable
+      vpn                     = local.appqoe_defaults.service_context_vpn
+      vpn_variable            = null
+      }] : [for context in each.value.appqoe.combined_service_contexts : {
+      appnav_controller_group = try(context.appnav_controller_group, local.appqoe_defaults.controller_group_name)
+      service_node_group      = try(context.service_node_group, local.appqoe_defaults.service_node_group)
+      enable                  = try(context.enable, local.appqoe_defaults.service_context_enable)
+      vpn                     = try(context.vpn_variable, null) != null ? null : try(context.vpn, local.appqoe_defaults.service_context_vpn)
+      vpn_variable            = try("{{${context.vpn_variable}}}", null)
+    }]
+  )
 
-  virtual_applications = try(length(each.value.appqoe.virtual_applications) == 0, true) ? null : [for application in each.value.appqoe.virtual_applications : {
-    resource_profile          = try(application.resource_profile, null)
-    resource_profile_variable = try("{{${application.resource_profile_variable}}}", null)
+  service_node_service_node_groups = !contains(local.appqoe_service_node_roles, each.value.appqoe.appqoe_device_role) ? null : [{
+    name          = local.appqoe_defaults.service_node_group
+    service_nodes = [{ address = local.appqoe_defaults.service_node_address, vpg_ip = local.appqoe_defaults.vpg_ip }]
+  }]
+
+  virtual_applications = try(each.value.appqoe.dre_optimization, null) == null ? null : [{
+    resource_profile          = try(each.value.appqoe.dre_optimization.resource_profile, null)
+    resource_profile_variable = try("{{${each.value.appqoe.dre_optimization.resource_profile_variable}}}", null)
   }]
 }
