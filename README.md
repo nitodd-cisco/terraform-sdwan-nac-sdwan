@@ -37,6 +37,7 @@ module "sdwan" {
 ## Requirements
 
 | Name | Version |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.8.0 |
 | <a name="requirement_local"></a> [local](#requirement\_local) | >= 2.3.0 |
 | <a name="requirement_sdwan"></a> [sdwan](#requirement\_sdwan) | ~> 0.11.5 |
@@ -45,6 +46,7 @@ module "sdwan" {
 ## Inputs
 
 | Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
 | <a name="input_model"></a> [model](#input\_model) | As an alternative to YAML files, a native Terraform data structure can be provided as well. | `map(any)` | `{}` | no |
 | <a name="input_write_default_values_file"></a> [write\_default\_values\_file](#input\_write\_default\_values\_file) | Write all default values to a YAML file. Value is a path pointing to the file to be created. | `string` | `""` | no |
 | <a name="input_yaml_directories"></a> [yaml\_directories](#input\_yaml\_directories) | List of paths to YAML directories. | `list(string)` | `[]` | no |
@@ -53,6 +55,7 @@ module "sdwan" {
 ## Outputs
 
 | Name | Description |
+|------|-------------|
 | <a name="output_default_values"></a> [default\_values](#output\_default\_values) | All default values. |
 | <a name="output_model"></a> [model](#output\_model) | Full model. |
 | <a name="output_topology_site_resolution"></a> [topology\_site\_resolution](#output\_topology\_site\_resolution) | Named failure for an unresolvable site name, instead of a bare "Invalid index" from local.nh\_site\_name\_to\_id further down.  An output precondition rather than a resource: it fails the plan the same way, and also propagates when this module is used as a child module. |
@@ -60,6 +63,7 @@ module "sdwan" {
 ## Providers
 
 | Name | Version |
+|------|---------|
 | <a name="provider_local"></a> [local](#provider\_local) | >= 2.3.0 |
 | <a name="provider_sdwan"></a> [sdwan](#provider\_sdwan) | ~> 0.11.5 |
 | <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
@@ -67,6 +71,7 @@ module "sdwan" {
 ## Resources
 
 | Name | Type |
+|------|------|
 | [local_sensitive_file.defaults](https://registry.terraform.io/providers/hashicorp/local/latest/docs/resources/sensitive_file) | resource |
 | [sdwan_activate_centralized_policy.activate_centralized_policy](https://registry.terraform.io/providers/CiscoDevNet/sdwan/latest/docs/resources/activate_centralized_policy) | resource |
 | [sdwan_activate_topology_group.activate_topology_group](https://registry.terraform.io/providers/CiscoDevNet/sdwan/latest/docs/resources/activate_topology_group) | resource |
